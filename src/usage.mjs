@@ -29,29 +29,39 @@ const num = (v) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, v)
 const percent = (used, total) => (total > 0 ? Math.min(100, (used / total) * 100) : 0);
 const iso = (ms) => (typeof ms === "number" && Number.isFinite(ms) ? new Date(ms).toISOString() : null);
 
-function limitWindow(kind, label, limit) {
+// kind stays "custom" so the panel keeps our label: it carries the remaining
+// share ("0% left" when exhausted) while usedPercent keeps BB's consumed
+// semantics for the bar and warning tones.
+// cost/model omitted: the 0.4x bridge schema rejects cost:null; the
+// usage-source server fills them via schema defaults.
+function limitWindow(prefix, limit) {
   if (!limit || typeof limit.used !== "number" || typeof limit.cap !== "number") return null;
-  // cost/model omitted: the 0.4x bridge schema rejects cost:null; the
-  // usage-source server fills them via schema defaults.
-  return { kind, label, usedPercent: percent(limit.used, limit.cap), resetsAt: iso(limit.resetAt) };
+  const usedPercent = percent(limit.used, limit.cap);
+  return {
+    kind: "custom",
+    label: `${prefix} · ${Math.round(100 - usedPercent)}% left`,
+    usedPercent,
+    resetsAt: iso(limit.resetAt),
+  };
 }
 
 /** @returns {import("@get-bb/plugin-sdk/provider-bridge").ProviderUsage} */
 export function mapUsage({ whoami, credits, subscription, summary }) {
   const windows = [];
-  const fiveHour = limitWindow("five-hour", "5-hour limit", credits?.windowLimits?.fiveHour);
+  const fiveHour = limitWindow("5h", credits?.windowLimits?.fiveHour);
   if (fiveHour) windows.push(fiveHour);
-  const weekly = limitWindow("weekly", "Weekly limit", credits?.windowLimits?.weekly);
+  const weekly = limitWindow("7d", credits?.windowLimits?.weekly);
   if (weekly) windows.push(weekly);
   const sub = subscription?.data ?? null;
   if (credits?.credits) {
     const c = credits.credits;
     const remaining = num(c.monthlyCredits) + num(c.purchasedCredits) + num(c.freeCredits);
     const used = num(summary?.totalCost);
+    const creditsPercent = percent(used, remaining + used);
     windows.push({
       kind: "custom",
-      label: "Credits",
-      usedPercent: percent(used, remaining + used),
+      label: `Credits · ${Math.round(100 - creditsPercent)}% left`,
+      usedPercent: creditsPercent,
       resetsAt: typeof sub?.currentPeriodEnd === "string" ? sub.currentPeriodEnd : null,
     });
   }

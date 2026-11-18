@@ -39,9 +39,9 @@ test("mapUsage maps windows, credits, plan, email", () => {
   assert.equal(u.status, "ok");
   assert.equal(u.accountEmail, "dev@example.com");
   assert.equal(u.planLabel, "Pro");
-  assert.deepEqual(u.windows.map((w) => w.label), ["5-hour limit", "Weekly limit", "Credits"]);
-  assert.deepEqual(u.windows.map((w) => w.kind), ["five-hour", "weekly", "custom"]);
-  assert.deepEqual(u.windows.map((w) => w.id), ["0:5-hour limit", "1:Weekly limit", "2:Credits"]);
+  assert.deepEqual(u.windows.map((w) => w.label), ["5h · 83% left", "7d · 83% left", "Credits · 98% left"]);
+  assert.deepEqual(u.windows.map((w) => w.kind), ["custom", "custom", "custom"]);
+  assert.deepEqual(u.windows.map((w) => w.id), ["0:5h · 83% left", "1:7d · 83% left", "2:Credits · 98% left"]);
   assert.ok(Math.abs(u.windows[0].usedPercent - (0.5 / 3) * 100) < 1e-9);
   assert.equal(u.windows[0].resetsAt, new Date(1794624608432).toISOString());
   assert.ok(Math.abs(u.windows[2].usedPercent - (0.2 / 10) * 100) < 1e-9);
@@ -61,6 +61,20 @@ test("mapUsage edge cases: cap 0, missing limits, missing credits", () => {
   assert.equal(u.windows.length, 2); // fiveHour + Credits, no weekly
   const bare = mapUsage({ whoami, credits: null, subscription: null, summary: null });
   assert.deepEqual(bare.windows, []);
+});
+
+test("mapUsage: exhausted limits read 0% left", () => {
+  const u = mapUsage({
+    whoami,
+    credits: {
+      credits: { monthlyCredits: 0, purchasedCredits: 0, freeCredits: 0 },
+      windowLimits: { fiveHour: { used: 3, cap: 3 }, weekly: { used: 6, cap: 6 } },
+    },
+    subscription,
+    summary: { totalCost: 5 },
+  });
+  assert.deepEqual(u.windows.map((w) => w.label), ["5h · 0% left", "7d · 0% left", "Credits · 0% left"]);
+  assert.deepEqual(u.windows.map((w) => w.usedPercent), [100, 100, 100]);
 });
 
 test("readUsage: no auth key -> unauthenticated", async () => {
